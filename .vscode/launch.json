@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug hello (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/hello.exe",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "preLaunchTask": "build",
+      "windows": {
+        "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe"
+      }
+    }
+  ]
+}
