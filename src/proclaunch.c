@@ -3,9 +3,95 @@
 #include <string.h>
 
 #ifdef _WIN32
-  #define WIN32_LEAN_AND_MEAN
-  #include <windows.h>
-  /* ... */
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    static char *build_cmdline(const char *const argv[]) {
+        size_t cap = 256, len = 0;
+        char *buf = malloc(cap);
+        if (!buf) return NULL;
+        buf[0] = '\0';
+
+        for (int i = 0; argv[i]; i++) {
+            const char *a = argv[i];
+            int need_quote = (*a == '\0' || strpbrk(a, " \t") != NULL);
+
+            // Добавляем пробел перед аргументом (кроме первого)
+            if (i > 0) {
+                if (len + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                buf[len++] = ' ';
+            }
+
+            // Открывающая кавычка
+            if (need_quote) {
+                if (len + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                buf[len++] = '"';
+            }
+
+            // Копируем сам аргумент (с экранированием)
+            while (*a) {
+                // Если нужно экранировать кавычку или слеш перед ней
+                if (need_quote && (*a == '"' || *a == '\\')) {
+                    if (len + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                    buf[len++] = '\\';
+                }
+                if (len + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                buf[len++] = *a++;
+            }
+
+            // Закрывающая кавычка
+            if (need_quote) {
+                if (len + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                buf[len++] = '"';
+            }
+        }
+        buf[len] = '\0';
+        return buf;
+    }
+    int pl_start(const char *const argv[], pl_process *proc) {
+        char *cmd = build_cmdline(argv);
+        if (!cmd) return -1;
+
+        STARTUPINFOA si;
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&si, sizeof si);
+        si.cb = sizeof si;
+
+        BOOL ok = CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+        free(cmd);
+
+        if (!ok) return -1;
+
+        CloseHandle(pi.hThread);
+        proc->handle = (intptr_t)pi.hProcess;
+        proc->pid = (long)pi.dwProcessId;
+        return 0;
+    }
+    int pl_wait(pl_process *proc, int *exit_code) {
+        HANDLE h = (HANDLE)proc->handle;
+        if (WaitForSingleObject(h, INFINITE) != WAIT_OBJECT_0) return -1;
+
+        DWORD code;
+        if (!GetExitCodeProcess(h, &code)) return -1;
+
+        CloseHandle(h);
+        *exit_code = (int)code;
+        return 0;
+    }
+
+    int pl_poll(pl_process *proc, int *exit_code) {
+        HANDLE h = (HANDLE)proc->handle;
+        DWORD w = WaitForSingleObject(h, 0);
+        if (w == WAIT_TIMEOUT) return 0;
+        if (w != WAIT_OBJECT_0) return -1;
+
+        DWORD code;
+        if (!GetExitCodeProcess(h, &code)) return -1;
+
+        CloseHandle(h);
+        *exit_code = (int)code;
+        return 1;
+    }
+
 #else
   #include <unistd.h>
   #include <sys/wait.h>
